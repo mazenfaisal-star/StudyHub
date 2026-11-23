@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#3a5bff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<title>محاضراتي</title>
+<style>
+:root{--bg:#eef1f7;--card:#fff;--ink:#14213d;--mut:#66708a;--pri:#3a5bff;--bd:#dde2ee;--ok:#1f9d6b;--wip:#e8a317;--todo:#cfd5e4;--bad:#c93b3b}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1324;--card:#161e36;--ink:#e9edf8;--mut:#98a2bf;--pri:#7d93ff;--bd:#26304f;--ok:#3ccf95;--wip:#f2b84b;--todo:#2c3656;--bad:#ef7a7a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.6 Cairo,"Segoe UI",Tahoma,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#app{max-width:560px;margin:0 auto;padding:16px 16px 48px}
+h1{font-size:1.5rem;font-weight:800;margin:0}h2{font-size:1.25rem;margin:.2rem 0}h3{font-size:1rem;margin:22px 0 8px;color:var(--mut);font-weight:600}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+.box{margin-top:12vh}.box .card,.box>*{margin-bottom:10px}
+.mut{color:var(--mut);font-size:.9rem}.err{color:var(--bad);min-height:1.4em;margin:0}
+input,select{width:100%;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin:4px 0}
+label{font-size:.85rem;color:var(--mut);display:block;margin-top:8px}
+.btn{display:inline-block;font:inherit;font-weight:600;border:0;border-radius:10px;padding:10px 16px;background:var(--pri);color:#fff;cursor:pointer;text-decoration:none;text-align:center;margin-top:6px}
+.btn.ghost{background:transparent;color:var(--pri);border:1px solid var(--pri)}.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad);margin-top:24px}
+.ico{font:inherit;background:none;border:1px solid var(--bd);color:var(--mut);border-radius:10px;padding:6px 12px;cursor:pointer}
+.lnk{color:var(--pri);cursor:pointer;text-decoration:underline}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.grid{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.chip{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 16px;cursor:pointer}
+.chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.pl{cursor:pointer}.pl b{font-size:1.05rem}
+.strip{display:flex;gap:3px;margin-top:10px;flex-wrap:wrap}.strip i{height:10px;min-width:10px;flex:1 1 10px;max-width:28px;border-radius:3px;background:var(--todo)}
+.strip i.done{background:var(--ok)}.strip i.prog{background:var(--wip)}
+.hero{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.hero strong{font-size:2.2rem;font-weight:800;line-height:1}.hero .strip{flex-basis:100%}
+.lec .top{display:flex;justify-content:space-between;gap:8px}.lec a{color:var(--pri);text-decoration:none;font-weight:800}
+:focus-visible{outline:3px solid var(--pri);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL='PASTE_SUPABASE_URL', SB_KEY='PASTE_SUPABASE_ANON_KEY';
+const POPULAR=['منصة محمد صلاح','منصة الجوهري','منصة دكتور كليكس','منصة خلطة','منصة المستر خالد'];
+const ST={todo:'لسه',prog:'بتتشاف',done:'خلصت'};
+const $=s=>document.querySelector(s), app=$('#app');
+let sb,user,plats=[],lecs=[],cur=null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl=u=>{try{const x=new URL(u);return /^https?:$/.test(x.protocol)?x.href:''}catch{return ''}};
+const stats=l=>{const t=l.length,d=l.filter(x=>x.status=='done').length;return{t,d}};
+const strip=l=>`<div class="strip">${l.map(x=>`<i class="${x.status}"></i>`).join('')}</div>`;
+
+async function init(){
+ if(SB_URL.startsWith('PASTE')){app.innerHTML='<div class="box"><h2>لسه محتاج ربط Supabase</h2><p class="mut">افتح index.html وحط SB_URL و SB_KEY في أول السكربت، ونفّذ schema.sql في SQL Editor.</p></div>';return}
+ sb=supabase.createClient(SB_URL,SB_KEY);
+ const{data}=await sb.auth.getSession();user=data.session?.user;
+ sb.auth.onAuthStateChange((_e,s)=>{const u=s?.user;if(u?.id!==user?.id){user=u;route()}});
+ route();
+}
+async function route(){
+ if(!user)return authView();
+ const[a,b]=await Promise.all([sb.from('platforms').select('*').order('created_at'),sb.from('lectures').select('*').order('release_date',{ascending:false,nullsFirst:false})]);
+ plats=a.data||[];lecs=b.data||[];
+ plats.length?home():onboard();
+}
+function authView(mode='in'){
+ app.innerHTML=`<div class="box"><h1>📚 محاضراتي</h1><p class="mut">سجّل دخولك وتابع محاضرات كل مدرس ومنصة في مكان واحد.</p>
+ <input id="em" type="email" placeholder="الإيميل" autocomplete="email"><input id="pw" type="password" placeholder="الباسورد (6 حروف على الأقل)" autocomplete="${mode=='in'?'current-password':'new-password'}">
+ <button class="btn" id="go">${mode=='in'?'تسجيل الدخول':'إنشاء حساب'}</button><p class="err" id="er"></p>
+ <a class="lnk" id="sw">${mode=='in'?'معنديش حساب؟ سجّل':'عندي حساب؟ ادخل'}</a></div>`;
+ $('#sw').onclick=()=>authView(mode=='in'?'up':'in');
+ $('#go').onclick=async()=>{const email=$('#em').value.trim(),password=$('#pw').value;
+  const r=mode=='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});
+  if(r.error)return $('#er').textContent=r.error.message;
+  if(mode=='up'&&!r.data.session)$('#er').textContent='بعتنالك إيميل تأكيد. أكّده وبعدين سجّل دخول.';};
+}
+function onboard(){
+ const sel=new Set();cur=null;
+ app.innerHTML=`<div class="box"><h2>إنت مشترك في أنهي منصات؟</h2><p class="mut">اختار منصاتك، وتقدر تزوّد غيرها في أي وقت.</p>
+ <div class="grid" id="gr">${POPULAR.map(n=>`<button class="chip" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+ <input id="cu" placeholder="منصة تانية؟ اكتب اسمها"><button class="btn ghost" id="ad">أضف المنصة</button>
+ <div><button class="btn" id="ok">كمّل</button></div></div>`;
+ $('#gr').onclick=e=>{const c=e.target.closest('.chip');if(!c)return;c.classList.toggle('on');sel.has(c.dataset.n)?sel.delete(c.dataset.n):sel.add(c.dataset.n)};
+ $('#ad').onclick=()=>{const v=$('#cu').value.trim();if(!v||sel.has(v))return;const b=document.createElement('button');b.className='chip on';b.dataset.n=v;b.textContent=v;$('#gr').append(b);sel.add(v);$('#cu').value=''};
+ $('#ok').onclick=async()=>{if(!sel.size)return alert('اختار منصة واحدة على الأقل');
+  await sb.from('platforms').insert([...sel].map(name=>({name})));route()};
+}
+function lecRow(l){const p=plats.find(x=>x.id==l.platform_id),u=safeUrl(l.url);
+ return `<div class="card lec"><div class="top"><b>${esc(l.title)}</b>${u?`<a href="${esc(u)}" target="_blank" rel="noopener" aria-label="افتح المحاضرة">▶</a>`:''}</div>
+ <div class="mut">${esc(l.teacher)}${l.release_date?' | '+l.release_date:''}${p&&!cur?' | '+esc(p.name):''}</div>
+ <select class="st" data-id="${l.id}" aria-label="حالة المحاضرة">${Object.entries(ST).map(([k,v])=>`<option value="${k}"${l.status==k?' selected':''}>${v}</option>`).join('')}</select></div>`}
+function home(){
+ cur=null;const s=stats(lecs),rest=lecs.filter(l=>l.status!='done').slice(0,6);
+ app.innerHTML=`<header><h1>محاضراتي</h1><button class="ico" id="lo">خروج</button></header>
+ <div class="card hero"><strong>${s.d}</strong><span>من ${s.t} محاضرة خلصتها</span>${strip(lecs)}</div>
+ <h3>منصاتي</h3>${plats.map(p=>{const L=lecs.filter(l=>l.platform_id==p.id),x=stats(L);
+  return `<div class="card pl" data-id="${p.id}"><b>${esc(p.name)}</b><div class="mut">${x.d} من ${x.t} خلصت</div>${strip(L)}</div>`}).join('')}
+ <button class="btn ghost" id="np">أضف منصة جديدة</button>
+ <h3>لسه مخلصتهاش</h3>${rest.length?rest.map(lecRow).join(''):'<p class="mut">مفيش محاضرات متراكمة. افتح منصة وأضف أول محاضرة.</p>'}`;
+ $('#lo').onclick=()=>sb.auth.signOut();
+ $('#np').onclick=async()=>{const name=(prompt('اسم المنصة؟')||'').trim();if(!name)return;await sb.from('platforms').insert({name});route()};
+}
+function platView(id){
+ cur=id;const p=plats.find(x=>x.id==id),L=lecs.filter(l=>l.platform_id==id),s=stats(L),pu=safeUrl(p.url);
+ app.innerHTML=`<header><button class="ico" id="bk">رجوع</button><h1>${esc(p.name)}</h1></header>
+ <div class="card"><div class="mut">${s.d} من ${s.t} خلصت</div>${strip(L)}
+ <label>لينك المنصة</label><input id="pu" value="${esc(p.url)}" placeholder="https://...">
+ <label>الإيميل أو اسم المستخدم (للتذكير فقط)</label><input id="pn" value="${esc(p.username)}">
+ <div class="row"><button class="btn" id="sv">حفظ</button>${pu?`<a class="btn ghost" href="${esc(pu)}" target="_blank" rel="noopener">افتح المنصة</a>`:''}</div></div>
+ <h3>أضف محاضرة</h3><div class="card"><input id="lt" placeholder="عنوان المحاضرة"><input id="lm" placeholder="المدرس أو المادة"><input id="ld" type="date" aria-label="تاريخ النزول"><input id="lu" placeholder="لينك المحاضرة (اختياري)">
+ <button class="btn" id="al">أضف المحاضرة</button></div>
+ <h3>المحاضرات</h3>${L.map(lecRow).join('')||'<p class="mut">لسه مفيش محاضرات في المنصة دي.</p>'}
+ <button class="btn danger" id="dp">احذف المنصة</button>`;
+ $('#bk').onclick=home;
+ $('#sv').onclick=async()=>{await sb.from('platforms').update({url:safeUrl($('#pu').value),username:$('#pn').value.trim()}).eq('id',id);await route();platView(id)};
+ $('#al').onclick=async()=>{const title=$('#lt').value.trim();if(!title)return alert('اكتب عنوان المحاضرة');
+  await sb.from('lectures').insert({platform_id:id,title,teacher:$('#lm').value.trim(),release_date:$('#ld').value||null,url:safeUrl($('#lu').value)});await route();platView(id)};
+ $('#dp').onclick=async()=>{if(!confirm('هتتمسح المنصة وكل محاضراتها. متأكد؟'))return;await sb.from('platforms').delete().eq('id',id);route()};
+}
+app.addEventListener('click',e=>{const c=e.target.closest('.pl');if(c)platView(c.dataset.id)});
+app.addEventListener('change',async e=>{if(!e.target.classList.contains('st'))return;
+ const id=e.target.dataset.id,status=e.target.value;await sb.from('lectures').update({status}).eq('id',id);
+ lecs.find(x=>x.id==id).status=status;cur?platView(cur):home()});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+init();
+</script>
+</body>
+</html>
